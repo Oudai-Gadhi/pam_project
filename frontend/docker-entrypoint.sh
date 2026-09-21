@@ -1,14 +1,17 @@
 #!/bin/sh
 set -eu
 
-# Inject runtime config so Keycloak URL can be changed without rebuilding the image
+# PUBLIC_HOST is the VM IP Windows uses in the browser — must match Keycloak KC_HOSTNAME
+HOST="${PUBLIC_HOST:?PUBLIC_HOST must be set in docker-compose environment}"
+
 cat > /usr/share/nginx/html/config.js <<EOF
 window.__PAM_CONFIG__ = {
-  keycloakUrl: "${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}",
+  keycloakUrl: "http://${HOST}:8080",
   keycloakRealm: "${KEYCLOAK_REALM:-pam}",
   keycloakClientId: "${KEYCLOAK_CLIENT_ID:-pam-app}",
-  apiBaseUrl: "${API_BASE_URL:-http://localhost:8000}",
+  apiBaseUrl: "http://${HOST}:8000",
 };
 EOF
 
+echo "Wrote config.js for PUBLIC_HOST=${HOST}"
 exec nginx -g 'daemon off;'

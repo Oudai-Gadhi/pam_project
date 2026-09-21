@@ -1,4 +1,6 @@
-# Keycloak setup from scratch (VM IP: 192.168.1.36)
+# Keycloak setup from scratch (VM IP: **192.168.1.36**)
+
+> If login redirects to **192.168.1.50** or another wrong IP, your `.env` still has the old example IP. Run `./scripts/setup-env.sh 192.168.1.36` and recreate the frontend container.
 
 Follow these steps **in order** on your VM and from **Windows Chrome/Edge**.
 

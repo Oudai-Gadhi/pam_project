@@ -1,3 +1,4 @@
+# PUBLIC_HOST must match the IP you type in the Windows browser (see .env)
 services:
   backend:
     build:
@@ -8,10 +9,10 @@ services:
     network_mode: host
     environment:
       KEYCLOAK_URL: ${KEYCLOAK_URL:-http://localhost:8080}
-      KEYCLOAK_PUBLIC_URL: http://${PUBLIC_HOST}:8080
+      KEYCLOAK_PUBLIC_URL: http://${PUBLIC_HOST:?Set PUBLIC_HOST in .env}:8080
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-pam}
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-pam-app}
-      FRONTEND_URL: http://${PUBLIC_HOST}:3000
+      FRONTEND_URL: http://${PUBLIC_HOST:?Set PUBLIC_HOST in .env}:3000
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
@@ -25,12 +26,13 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_KEYCLOAK_URL: http://${PUBLIC_HOST}:8080
+        VITE_KEYCLOAK_URL: http://${PUBLIC_HOST:?Set PUBLIC_HOST in .env}:8080
         VITE_KEYCLOAK_REALM: ${KEYCLOAK_REALM:-pam}
         VITE_KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-pam-app}
-        VITE_API_BASE_URL: http://${PUBLIC_HOST}:8000
+        VITE_API_BASE_URL: http://${PUBLIC_HOST:?Set PUBLIC_HOST in .env}:8000
     container_name: pam-frontend
     environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:?Set PUBLIC_HOST in .env}
       KEYCLOAK_PUBLIC_URL: http://${PUBLIC_HOST}:8080
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-pam}
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-pam-app}

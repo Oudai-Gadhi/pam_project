@@ -4,11 +4,28 @@ import { useKeycloak } from '../context/KeycloakContext';
 import { loginWithKeycloak } from '../keycloak';
 import { getAppConfig } from '../config';
 
+function getHostMismatchWarning(keycloakUrl) {
+  try {
+    const kcHost = new URL(keycloakUrl).hostname;
+    const pageHost = window.location.hostname;
+    if (kcHost !== pageHost && pageHost !== 'localhost' && pageHost !== '127.0.0.1') {
+      return (
+        `Wrong Keycloak host: config points to "${kcHost}" but you opened this app as "${pageHost}". ` +
+        `On the VM run: ./scripts/setup-env.sh ${pageHost} && docker compose up -d --force-recreate frontend`
+      );
+    }
+  } catch {
+    /* ignore invalid URL */
+  }
+  return null;
+}
+
 export default function Login() {
   const { initialized, authenticated, initError } = useKeycloak();
   const [loginError, setLoginError] = useState(null);
   const [isRedirecting, setIsRedirecting] = useState(false);
   const config = getAppConfig();
+  const hostMismatch = config.keycloakUrl ? getHostMismatchWarning(config.keycloakUrl) : null;
 
   if (!initialized) {
     return (
@@ -23,6 +40,11 @@ export default function Login() {
   }
 
   const handleLogin = async () => {
+    if (hostMismatch) {
+      setLoginError(hostMismatch);
+      return;
+    }
+
     setLoginError(null);
     setIsRedirecting(true);
 
@@ -34,7 +56,7 @@ export default function Login() {
     }
   };
 
-  const displayError = loginError || initError;
+  const displayError = loginError || initError || hostMismatch;
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-900 via-pam-900 to-slate-800 px-4">
@@ -66,8 +88,8 @@ export default function Login() {
 
         <div className="mt-6 space-y-1 text-center text-xs text-slate-500">
           <p>Keycloak: {config.keycloakUrl || 'not configured'}</p>
+          <p>This page: {window.location.origin}</p>
           <p>Realm: {config.keycloakRealm} · Client: {config.keycloakClientId}</p>
-          <p>MFA (TOTP) is enforced by your identity provider.</p>
         </div>
       </div>
     </div>
