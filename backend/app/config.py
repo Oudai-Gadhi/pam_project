@@ -17,6 +17,11 @@ class Settings(BaseSettings):
 
     frontend_url: str = "http://localhost:3000"
     log_level: str = "INFO"
+    pam_db_host: str = "pam-db"
+    pam_db_port: int = 5432
+    pam_db_name: str = "pam"
+    pam_db_user: str = "pam"
+    pam_db_password: str
 
     @property
     def jwks_url(self) -> str:

@@ -61,4 +61,20 @@ export async function fetchMe() {
   }
 }
 
+export async function listMyRequests() {
+  return (await apiClient.get('/api/requests/mine')).data;
+}
+
+export async function createAccessRequest(payload) {
+  return (await apiClient.post('/api/requests', payload)).data;
+}
+
+export async function listPendingRequests() {
+  return (await apiClient.get('/api/requests/pending')).data;
+}
+
+export async function decideAccessRequest(id, payload) {
+  return (await apiClient.post(`/api/requests/${id}/decision`, payload)).data;
+}
+
 export default apiClient;

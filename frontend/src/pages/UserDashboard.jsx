@@ -1,18 +1,36 @@
 import { useEffect, useState } from 'react';
 import Header from '../components/Header';
-import { fetchMe } from '../api/client';
+import { createAccessRequest, listMyRequests } from '../api/client';
 import { getGroupsFromToken } from '../context/KeycloakContext';
+import RequestStatus from '../components/RequestStatus';
 
 export default function UserDashboard() {
-  const [profile, setProfile] = useState(null);
+  const [requests, setRequests] = useState([]);
   const [error, setError] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [form, setForm] = useState({ target_system: '', requested_role: '', justification: '', duration_minutes: 60 });
   const groups = getGroupsFromToken();
 
   useEffect(() => {
-    fetchMe()
-      .then(setProfile)
+    listMyRequests()
+      .then(setRequests)
       .catch((err) => setError(err.message));
   }, []);
+
+  const submit = async (event) => {
+    event.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    try {
+      const request = await createAccessRequest({ ...form, duration_minutes: Number(form.duration_minutes) });
+      setRequests((current) => [request, ...current]);
+      setForm({ target_system: '', requested_role: '', justification: '', duration_minutes: 60 });
+    } catch (err) {
+      setError(err.response?.data?.detail || err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -20,27 +38,21 @@ export default function UserDashboard() {
       <main className="mx-auto max-w-5xl px-4 py-10">
         <div className="rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
           <h1 className="text-2xl font-bold text-slate-900">User Dashboard</h1>
-          <p className="mt-2 text-slate-600">
-            Placeholder for Phase 2 — request privileged access to target systems.
-          </p>
+          <p className="mt-2 text-slate-600">Request time-bounded privileged access. Approval does not grant credentials yet; that arrives with Vault in Phase 3.</p>
 
-          <div className="mt-6 rounded-lg bg-pam-50 p-4">
-            <p className="text-sm font-medium text-pam-700">Your role: pam_users</p>
-            <p className="mt-1 text-sm text-slate-600">
-              Future: submit access requests, view active sessions, connect via Guacamole.
-            </p>
+          <form onSubmit={submit} className="mt-6 grid gap-4 rounded-xl bg-slate-50 p-5 sm:grid-cols-2">
+            <label className="text-sm font-medium">Target system<input required value={form.target_system} onChange={(e) => setForm({ ...form, target_system: e.target.value })} placeholder="prod-linux-01" className="mt-1 w-full rounded border border-slate-300 px-3 py-2" /></label>
+            <label className="text-sm font-medium">Requested role<input required value={form.requested_role} onChange={(e) => setForm({ ...form, requested_role: e.target.value })} placeholder="ssh-admin" className="mt-1 w-full rounded border border-slate-300 px-3 py-2" /></label>
+            <label className="text-sm font-medium sm:col-span-2">Business justification<textarea required minLength="10" value={form.justification} onChange={(e) => setForm({ ...form, justification: e.target.value })} className="mt-1 min-h-24 w-full rounded border border-slate-300 px-3 py-2" /></label>
+            <label className="text-sm font-medium">Duration (minutes)<input required type="number" min="15" max="43200" value={form.duration_minutes} onChange={(e) => setForm({ ...form, duration_minutes: e.target.value })} className="mt-1 w-full rounded border border-slate-300 px-3 py-2" /></label>
+            <div className="flex items-end"><button disabled={submitting} className="rounded bg-pam-600 px-4 py-2 font-medium text-white disabled:opacity-60">{submitting ? 'Submitting…' : 'Submit request'}</button></div>
+          </form>
+
+          <h2 className="mt-8 text-lg font-semibold">My requests</h2>
+          <div className="mt-3 space-y-3">
+            {requests.length === 0 && <p className="text-sm text-slate-500">No access requests submitted yet.</p>}
+            {requests.map((request) => <div key={request.id} className="rounded-lg border border-slate-200 p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-medium">{request.target_system} · {request.requested_role}</p><p className="mt-1 text-sm text-slate-600">{request.justification}</p><p className="mt-2 text-xs text-slate-500">{request.duration_minutes} minutes · {new Date(request.created_at).toLocaleString()}</p>{request.decision_comment && <p className="mt-2 text-sm">Decision: {request.decision_comment}</p>}</div><RequestStatus status={request.status} /></div></div>)}
           </div>
-
-          {profile && (
-            <div className="mt-6">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-                Backend verification (/api/me)
-              </h2>
-              <pre className="mt-2 overflow-x-auto rounded-lg bg-slate-900 p-4 text-xs text-green-400">
-                {JSON.stringify(profile, null, 2)}
-              </pre>
-            </div>
-          )}
 
           {error && (
             <p className="mt-4 text-sm text-red-600">API error: {error}</p>

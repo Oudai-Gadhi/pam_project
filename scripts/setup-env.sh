@@ -13,6 +13,20 @@ if [ -z "$PUBLIC_HOST" ]; then
   exit 1
 fi
 
+PAM_DB_PASSWORD="${PAM_DB_PASSWORD:-}"
+if [ -z "$PAM_DB_PASSWORD" ]; then
+  printf "Enter a new password for the PAM request database: "
+  stty -echo
+  read -r PAM_DB_PASSWORD
+  stty echo
+  printf '\n'
+fi
+
+if [ -z "$PAM_DB_PASSWORD" ]; then
+  echo "Error: PAM database password is required." >&2
+  exit 1
+fi
+
 cat > .env <<EOF
 PUBLIC_HOST=${PUBLIC_HOST}
 
@@ -24,6 +38,10 @@ KEYCLOAK_CLIENT_ID=pam-app
 BACKEND_PORT=8000
 FRONTEND_URL=http://${PUBLIC_HOST}:3000
 LOG_LEVEL=INFO
+
+PAM_DB_NAME=pam
+PAM_DB_USER=pam
+PAM_DB_PASSWORD=${PAM_DB_PASSWORD}
 
 VITE_KEYCLOAK_URL=http://${PUBLIC_HOST}:8080
 VITE_KEYCLOAK_REALM=pam

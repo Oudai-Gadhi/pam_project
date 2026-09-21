@@ -2,6 +2,18 @@
 
 Minimal production-shaped foundation for a Privileged Access Management (PAM) platform: Keycloak OIDC authentication, group-based routing, JWT-validated FastAPI backend, and Docker Compose for the app layer.
 
+## Phase 2: request and approval workflow
+
+Phase 2 adds a broker-owned Postgres database and the following server-enforced API workflow:
+
+- `POST /api/requests` — `pam_users` submit access requests.
+- `GET /api/requests/mine` — requesters view their own history.
+- `GET /api/requests/pending` — `approvers` view pending work.
+- `POST /api/requests/{id}/decision` — approvers approve or reject, with a required comment.
+- `GET /api/requests/{id}/events` — requester or approvers can read the audit trail.
+
+Approvers cannot decide their own requests. Phase 2 records approval only; it does not yet issue credentials or open a session.
+
 ## Architecture (Phase 1)
 
 ```

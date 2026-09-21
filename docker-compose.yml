@@ -1,5 +1,20 @@
 # PUBLIC_HOST must match the IP you type in the Windows browser (see .env)
 services:
+  pam-db:
+    image: postgres:16-alpine
+    container_name: pam-app-db
+    environment:
+      POSTGRES_DB: ${PAM_DB_NAME:-pam}
+      POSTGRES_USER: ${PAM_DB_USER:-pam}
+      POSTGRES_PASSWORD: ${PAM_DB_PASSWORD:?Set PAM_DB_PASSWORD in .env}
+    volumes:
+      - pam_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PAM_DB_USER:-pam} -d ${PAM_DB_NAME:-pam}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   backend:
     build:
       context: ./backend
@@ -16,8 +31,16 @@ services:
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-pam-app}
       FRONTEND_URL: http://${PUBLIC_HOST:?Set PUBLIC_HOST in .env}:3000
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      PAM_DB_HOST: pam-db
+      PAM_DB_PORT: 5432
+      PAM_DB_NAME: ${PAM_DB_NAME:-pam}
+      PAM_DB_USER: ${PAM_DB_USER:-pam}
+      PAM_DB_PASSWORD: ${PAM_DB_PASSWORD:?Set PAM_DB_PASSWORD in .env}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      pam-db:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
       interval: 10s
@@ -45,3 +68,6 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+
+volumes:
+  pam_db_data:
