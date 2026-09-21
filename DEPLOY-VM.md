@@ -10,6 +10,10 @@ Windows PC (browser)
     └── http://<VM-IP>:8080  →  Keycloak (already on VM)
 ```
 
+The browser sends API requests to `http://<VM-IP>:3000/api/*`. The frontend
+nginx container forwards them over the Docker network to `backend:8000`; it
+does **not** require Windows access to port 8000.
+
 ## 1. On the VM — clone and configure
 
 ```bash

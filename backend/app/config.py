@@ -8,9 +8,9 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    # Keycloak runs on the same VM — backend fetches JWKS via localhost
-    keycloak_url: str = "http://localhost:8080"
-    # JWT `iss` claim also uses localhost because browser and backend share the same host
+    # In Docker, Compose supplies host.docker.internal to reach Keycloak on the VM.
+    keycloak_url: str = "http://host.docker.internal:8080"
+    # The issuer uses the URL seen by the Windows browser, never the Docker host alias.
     keycloak_public_url: str = "http://localhost:8080"
     keycloak_realm: str = "pam"
     keycloak_client_id: str = "pam-app"
@@ -24,7 +24,7 @@ class Settings(BaseSettings):
 
     @property
     def issuer(self) -> str:
-        # Tokens are issued with the public hostname because Keycloak is reached via localhost
+        # Tokens are issued with the public hostname; JWKS fetch may use a private route.
         return f"{self.keycloak_public_url}/realms/{self.keycloak_realm}"
 
 

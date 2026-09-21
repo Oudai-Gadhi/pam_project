@@ -5,15 +5,19 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: pam-backend
-    # Host network: backend reaches Keycloak on the VM via localhost:8080
-    network_mode: host
+    # The app services use the Compose network. Only this service needs a route
+    # back to the VM host, where Keycloak is already listening on port 8080.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
-      KEYCLOAK_URL: ${KEYCLOAK_URL:-http://localhost:8080}
+      KEYCLOAK_URL: http://host.docker.internal:8080
       KEYCLOAK_PUBLIC_URL: http://${PUBLIC_HOST:?Set PUBLIC_HOST in .env}:8080
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-pam}
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-pam-app}
       FRONTEND_URL: http://${PUBLIC_HOST:?Set PUBLIC_HOST in .env}:3000
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
       interval: 10s
@@ -31,8 +35,6 @@ services:
         VITE_KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-pam-app}
         VITE_API_BASE_URL: http://${PUBLIC_HOST:?Set PUBLIC_HOST in .env}:3000
     container_name: pam-frontend
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     environment:
       PUBLIC_HOST: ${PUBLIC_HOST:?Set PUBLIC_HOST in .env}
       KEYCLOAK_PUBLIC_URL: http://${PUBLIC_HOST}:8080
