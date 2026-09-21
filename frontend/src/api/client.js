@@ -1,17 +1,17 @@
 import axios from 'axios';
 import keycloak from '../keycloak';
+import { getAppConfig } from '../config';
 
 const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL,
+  baseURL: getAppConfig().apiBaseUrl,
 });
 
-// Attach a fresh access token to every request — backend validates signature server-side
 apiClient.interceptors.request.use(async (config) => {
   if (keycloak.authenticated) {
     try {
       await keycloak.updateToken(30);
     } catch {
-      keycloak.login();
+      keycloak.login({ redirectUri: `${window.location.origin}/` });
       return Promise.reject(new Error('Session expired'));
     }
     config.headers.Authorization = `Bearer ${keycloak.token}`;

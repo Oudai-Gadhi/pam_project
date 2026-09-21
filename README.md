@@ -5,24 +5,26 @@ Minimal production-shaped foundation for a Privileged Access Management (PAM) pl
 ## Architecture (Phase 1)
 
 ```
-Browser ──► React SPA (nginx :3000)
-              │ keycloak-js (PKCE login)
-              ▼
-         Keycloak (:8080)          ← already running on this VM (not in Compose)
-              │
-              ▼ access token (groups claim)
-         FastAPI backend (:8000)   ← host network, talks to Keycloak via localhost
-              └── JWKS signature verification
+Windows PC (browser)
+    │  http://<VM-IP>:3000 / :8080 / :8000
+    ▼
+Linux VM (no browser)
+    ├── React SPA (Docker :3000)
+    ├── Keycloak (:8080)           ← already running (not in Compose)
+    └── FastAPI backend (:8000)    ← host network, JWKS via localhost:8080
 ```
 
 **Security principle:** The frontend reads groups for UX routing only. The backend **always** verifies JWT signatures against Keycloak JWKS before trusting any claim.
 
+> **Browsing from Windows, app on a headless VM?** See **[DEPLOY-VM.md](./DEPLOY-VM.md)** for the full setup guide.
+
 ## Prerequisites
 
-- [Docker](https://docs.docker.com/engine/install/) with Compose v2+ (Linux VM)
-- **Keycloak already running** on this VM at `http://localhost:8080`
+- Linux VM with [Docker](https://docs.docker.com/engine/install/) Compose v2+
+- **Keycloak already running** on the VM (port 8080)
 - Keycloak realm `pam`, client `pam-app`, and groups configured (see below)
-- Ports **3000** and **8000** available on the host
+- Ports **3000**, **8000**, **8080** open in VM firewall (for access from your Windows PC)
+- VM IP known (e.g. `192.168.1.50`) — set as `PUBLIC_HOST` in `.env`
 
 ## Project structure
 
@@ -73,21 +75,23 @@ pam-app/
             └── index.css
 ```
 
-## Quick start
+## Quick start (on the VM)
 
 ```bash
-# Ensure Keycloak is already up on localhost:8080
-curl -s http://localhost:8080/realms/pam/.well-known/openid-configuration | head
+# Replace with your VM IP — the address you use from Windows
+chmod +x scripts/setup-env.sh
+./scripts/setup-env.sh 192.168.1.50
 
-cp .env.example .env
-docker compose up --build
+docker compose up --build -d
 ```
 
-| Service   | URL                          | Managed by Compose |
+From **Windows**, open: `http://<VM-IP>:3000`
+
+| Service   | URL (from Windows)           | Managed by Compose |
 |-----------|------------------------------|--------------------|
-| Frontend  | http://localhost:3000        | Yes                |
-| Backend   | http://localhost:8000        | Yes (host network) |
-| Keycloak  | http://localhost:8080        | No — external      |
+| Frontend  | http://\<VM-IP\>:3000        | Yes                |
+| Backend   | http://\<VM-IP\>:8000        | Yes (host network) |
+| Keycloak  | http://\<VM-IP\>:8080        | No — external      |
 
 ---
 
@@ -123,9 +127,9 @@ Keycloak is **not** started by this project. These steps apply to your existing 
    - Client authentication: **OFF** (public client)
    - Standard flow: **ON**
    - Direct access grants: **ON** (enables curl testing)
-4. **Login settings**
-   - Valid redirect URIs: `http://localhost:3000/*`
-   - Web origins: `http://localhost:3000`
+4. **Login settings** (use your VM IP, not localhost)
+   - Valid redirect URIs: `http://<VM-IP>:3000/*`
+   - Web origins: `http://<VM-IP>:3000`
    - PKCE Method: **S256**
 5. Save.
 
@@ -284,12 +288,26 @@ curl -s -H "Authorization: Bearer invalid.token.here" http://localhost:8000/api/
 - Keycloak must be running **before** starting the app: `curl http://localhost:8080/health` or check your Keycloak service.
 - Backend uses host networking — if you run the backend outside Docker (`uvicorn app.main:app`), `localhost:8080` works directly with no special config.
 
+### Login button does nothing / no redirect
+
+- The login page now shows the configured Keycloak URL — verify it matches where Keycloak actually runs.
+- Open browser DevTools → **Console** for errors (e.g. missing config, CORS, wrong realm).
+- Verify Keycloak is up: `curl http://localhost:8080/realms/pam/.well-known/openid-configuration`
+- If you access the app via **VM IP** (not `localhost`), update `.env`:
+  ```env
+  KEYCLOAK_PUBLIC_URL=http://<vm-ip>:8080
+  VITE_KEYCLOAK_URL=http://<vm-ip>:8080
+  FRONTEND_URL=http://<vm-ip>:3000
+  VITE_API_BASE_URL=http://<vm-ip>:8000
+  ```
+  Then add matching URIs in Keycloak client `pam-app`: Valid redirect URIs and Web origins for `http://<vm-ip>:3000/*`.
+- Restart frontend after env changes: `docker compose up --build frontend`
+- Runtime config is written to `/config.js` at container start — check it: http://localhost:3000/config.js
+
 ### Frontend shows wrong Keycloak URL
 
-- Vite env vars are baked at **build time**. After changing `VITE_*` vars, rebuild:
-  ```bash
-  docker compose up --build frontend
-  ```
+- Docker injects runtime config via `docker-entrypoint.sh` — restart frontend after changing `KEYCLOAK_PUBLIC_URL` in `.env`.
+- For local dev (`npm run dev`), edit `frontend/public/config.js` or set `VITE_*` vars.
 
 ---
 
@@ -303,5 +321,4 @@ curl -s -H "Authorization: Bearer invalid.token.here" http://localhost:8000/api/
 | Real dashboards | Replace placeholder pages in `frontend/src/pages/` |
 
 No refactoring of auth middleware is needed — `get_current_user` and `require_group` are ready for Phase 2.
-#   p a m _ p r o j e c t  
  

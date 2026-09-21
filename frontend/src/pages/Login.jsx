@@ -1,8 +1,14 @@
+import { useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useKeycloak } from '../context/KeycloakContext';
+import { loginWithKeycloak } from '../keycloak';
+import { getAppConfig } from '../config';
 
 export default function Login() {
-  const { initialized, authenticated, keycloak } = useKeycloak();
+  const { initialized, authenticated, initError } = useKeycloak();
+  const [loginError, setLoginError] = useState(null);
+  const [isRedirecting, setIsRedirecting] = useState(false);
+  const config = getAppConfig();
 
   if (!initialized) {
     return (
@@ -16,9 +22,19 @@ export default function Login() {
     return <Navigate to="/" replace />;
   }
 
-  const handleLogin = () => {
-    keycloak.login({ redirectUri: window.location.origin });
+  const handleLogin = async () => {
+    setLoginError(null);
+    setIsRedirecting(true);
+
+    try {
+      await loginWithKeycloak();
+    } catch (error) {
+      setIsRedirecting(false);
+      setLoginError(error?.message || 'Login failed — check Keycloak configuration.');
+    }
   };
+
+  const displayError = loginError || initError;
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-900 via-pam-900 to-slate-800 px-4">
@@ -33,17 +49,26 @@ export default function Login() {
           </p>
         </div>
 
+        {displayError && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            {displayError}
+          </div>
+        )}
+
         <button
           type="button"
           onClick={handleLogin}
-          className="w-full rounded-lg bg-pam-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-pam-700"
+          disabled={isRedirecting}
+          className="w-full rounded-lg bg-pam-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-pam-700 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          Sign in with Keycloak
+          {isRedirecting ? 'Redirecting to Keycloak…' : 'Sign in with Keycloak'}
         </button>
 
-        <p className="mt-6 text-center text-xs text-slate-500">
-          MFA (TOTP) is enforced by your identity provider.
-        </p>
+        <div className="mt-6 space-y-1 text-center text-xs text-slate-500">
+          <p>Keycloak: {config.keycloakUrl || 'not configured'}</p>
+          <p>Realm: {config.keycloakRealm} · Client: {config.keycloakClientId}</p>
+          <p>MFA (TOTP) is enforced by your identity provider.</p>
+        </div>
       </div>
     </div>
   );

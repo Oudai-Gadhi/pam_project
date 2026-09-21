@@ -4,15 +4,15 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: pam-backend
-    # Host network lets the backend reach Keycloak on the VM's localhost:8080
+    # Host network: backend reaches Keycloak on the VM via localhost:8080
     network_mode: host
     environment:
-      KEYCLOAK_URL: ${KEYCLOAK_URL}
-      KEYCLOAK_PUBLIC_URL: ${KEYCLOAK_PUBLIC_URL}
-      KEYCLOAK_REALM: ${KEYCLOAK_REALM}
-      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID}
-      FRONTEND_URL: ${FRONTEND_URL}
-      LOG_LEVEL: ${LOG_LEVEL}
+      KEYCLOAK_URL: ${KEYCLOAK_URL:-http://localhost:8080}
+      KEYCLOAK_PUBLIC_URL: http://${PUBLIC_HOST}:8080
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-pam}
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-pam-app}
+      FRONTEND_URL: http://${PUBLIC_HOST}:3000
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
       interval: 10s
@@ -25,11 +25,16 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_KEYCLOAK_URL: ${VITE_KEYCLOAK_URL}
-        VITE_KEYCLOAK_REALM: ${VITE_KEYCLOAK_REALM}
-        VITE_KEYCLOAK_CLIENT_ID: ${VITE_KEYCLOAK_CLIENT_ID}
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL}
+        VITE_KEYCLOAK_URL: http://${PUBLIC_HOST}:8080
+        VITE_KEYCLOAK_REALM: ${KEYCLOAK_REALM:-pam}
+        VITE_KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-pam-app}
+        VITE_API_BASE_URL: http://${PUBLIC_HOST}:8000
     container_name: pam-frontend
+    environment:
+      KEYCLOAK_PUBLIC_URL: http://${PUBLIC_HOST}:8080
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-pam}
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-pam-app}
+      API_BASE_URL: http://${PUBLIC_HOST}:8000
     ports:
       - "3000:80"
     depends_on:

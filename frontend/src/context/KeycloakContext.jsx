@@ -1,34 +1,38 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import keycloak from '../keycloak';
+import keycloak, { initKeycloak } from '../keycloak';
 
 const KeycloakContext = createContext(null);
 
 export function KeycloakProvider({ children }) {
   const [initialized, setInitialized] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
+  const [initError, setInitError] = useState(null);
 
   useEffect(() => {
-    keycloak
-      .init({
-        onLoad: 'check-sso',
-        pkceMethod: 'S256',
-        // Silent iframe checks often fail cross-origin in Docker; disable to avoid spurious logouts
-        checkLoginIframe: false,
-      })
+    let active = true;
+
+    initKeycloak()
       .then((auth) => {
-        setAuthenticated(auth);
+        if (!active) return;
+        setAuthenticated(Boolean(auth));
+        setInitError(null);
         setInitialized(true);
       })
-      .catch(() => {
+      .catch((error) => {
+        if (!active) return;
         setAuthenticated(false);
+        setInitError(error?.message || 'Failed to connect to Keycloak');
         setInitialized(true);
       });
 
-    // Proactively refresh before expiry so API calls don't fail mid-session
     keycloak.onTokenExpired = () => {
       keycloak.updateToken(30).catch(() => {
-        keycloak.login();
+        keycloak.login({ redirectUri: `${window.location.origin}/` });
       });
+    };
+
+    return () => {
+      active = false;
     };
   }, []);
 
@@ -36,9 +40,10 @@ export function KeycloakProvider({ children }) {
     () => ({
       initialized,
       authenticated,
+      initError,
       keycloak,
     }),
-    [initialized, authenticated],
+    [initialized, authenticated, initError],
   );
 
   return <KeycloakContext.Provider value={value}>{children}</KeycloakContext.Provider>;
@@ -52,10 +57,6 @@ export function useKeycloak() {
   return context;
 }
 
-/**
- * Read group memberships from the ACCESS token (not ID token).
- * Requires the Keycloak "Group Membership" mapper on the pam-app client scope.
- */
 export function getGroupsFromToken() {
   return keycloak.tokenParsed?.groups ?? [];
 }
