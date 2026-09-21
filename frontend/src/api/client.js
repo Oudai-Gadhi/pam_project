@@ -19,12 +19,23 @@ apiClient.interceptors.request.use(async (config) => {
   config.baseURL = resolveApiBaseUrl();
 
   if (keycloak.authenticated) {
-    try {
-      await keycloak.updateToken(30);
-    } catch {
-      keycloak.login({ redirectUri: `${window.location.origin}/` });
-      return Promise.reject(new Error('Session expired'));
+    if (!keycloak.token) {
+      return Promise.reject(new Error('No access token is available for this session.'));
     }
+
+    // A code-login has just supplied a valid access token. Avoid making an
+    // unnecessary cross-origin refresh request before the first API call.
+    // KeycloakContext refreshes when the token actually expires; this branch
+    // only refreshes proactively when the current token is nearly expired.
+    if (keycloak.isTokenExpired(30)) {
+      try {
+        await keycloak.updateToken(30);
+      } catch {
+        keycloak.login({ redirectUri: `${window.location.origin}/` });
+        return Promise.reject(new Error('Session expired'));
+      }
+    }
+
     config.headers.Authorization = `Bearer ${keycloak.token}`;
   }
   return config;
