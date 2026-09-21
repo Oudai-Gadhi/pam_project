@@ -2,6 +2,7 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from app.config import get_settings
 from app.database import Base, engine
@@ -33,6 +34,14 @@ app.include_router(requests.router)
 
 
 @app.on_event("startup")
-def create_phase_two_tables() -> None:
+def create_broker_tables() -> None:
     # Bootstrap only the broker-owned schema. Keycloak remains independent.
     Base.metadata.create_all(bind=engine)
+    # The project started without a migration framework. These additive changes
+    # keep existing lab databases usable; production deployments should replace
+    # this bootstrap migration with Alembic before the first release.
+    with engine.begin() as connection:
+        connection.execute(text("ALTER TABLE access_requests ADD COLUMN IF NOT EXISTS requester_ip VARCHAR(64)"))
+        connection.execute(text("ALTER TABLE access_requests ADD COLUMN IF NOT EXISTS access_expires_at TIMESTAMP WITH TIME ZONE"))
+        connection.execute(text("ALTER TABLE access_requests ADD COLUMN IF NOT EXISTS connect_issued_at TIMESTAMP WITH TIME ZONE"))
+        connection.execute(text("ALTER TABLE access_requests ADD COLUMN IF NOT EXISTS certificate_serial VARCHAR(255)"))

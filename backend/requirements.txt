@@ -6,3 +6,4 @@ pydantic-settings==2.6.1
 python-multipart==0.0.20
 SQLAlchemy==2.0.36
 psycopg[binary]==3.2.3
+cryptography==44.0.0

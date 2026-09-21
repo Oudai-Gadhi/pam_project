@@ -36,8 +36,14 @@ services:
       PAM_DB_NAME: ${PAM_DB_NAME:-pam}
       PAM_DB_USER: ${PAM_DB_USER:-pam}
       PAM_DB_PASSWORD: ${PAM_DB_PASSWORD:?Set PAM_DB_PASSWORD in .env}
-    ports:
-      - "${BACKEND_PORT:-8000}:8000"
+      VAULT_ADDR: ${VAULT_ADDR:?Set VAULT_ADDR in .env}
+      VAULT_TOKEN: ${VAULT_TOKEN:?Set VAULT_TOKEN in .env}
+      VAULT_SSH_MOUNT: ${VAULT_SSH_MOUNT:-ssh-client-signer}
+      VAULT_SSH_ROLE: ${VAULT_SSH_ROLE:-dev-role}
+      VAULT_VERIFY_TLS: ${VAULT_VERIFY_TLS:-false}
+      GUACAMOLE_PUBLIC_URL: ${GUACAMOLE_PUBLIC_URL:?Set GUACAMOLE_PUBLIC_URL in .env}
+      GUACAMOLE_JSON_SECRET: ${GUACAMOLE_JSON_SECRET:?Set GUACAMOLE_JSON_SECRET in .env}
+      PAM_TARGETS_JSON: ${PAM_TARGETS_JSON:?Set PAM_TARGETS_JSON in .env}
     depends_on:
       pam-db:
         condition: service_healthy

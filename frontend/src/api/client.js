@@ -77,4 +77,8 @@ export async function decideAccessRequest(id, payload) {
   return (await apiClient.post(`/api/requests/${id}/decision`, payload)).data;
 }
 
+export async function startAccessSession(id) {
+  return (await apiClient.post(`/api/requests/${id}/connect`)).data;
+}
+
 export default apiClient;

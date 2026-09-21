@@ -43,6 +43,16 @@ PAM_DB_NAME=pam
 PAM_DB_USER=pam
 PAM_DB_PASSWORD=${PAM_DB_PASSWORD}
 
+# Fill these broker-only integration values before starting the app.
+VAULT_ADDR=http://host.docker.internal:8200
+VAULT_TOKEN=replace-with-a-dedicated-vault-token
+VAULT_SSH_MOUNT=ssh-client-signer
+VAULT_SSH_ROLE=dev-role
+VAULT_VERIFY_TLS=false
+GUACAMOLE_PUBLIC_URL=http://${PUBLIC_HOST}:8081/guacamole
+GUACAMOLE_JSON_SECRET=replace-with-32-random-hex-characters
+PAM_TARGETS_JSON={"rhel-lab":{"host":"10.0.0.50","port":22,"users":["oudai"]}}
+
 VITE_KEYCLOAK_URL=http://${PUBLIC_HOST}:8080
 VITE_KEYCLOAK_REALM=pam
 VITE_KEYCLOAK_CLIENT_ID=pam-app

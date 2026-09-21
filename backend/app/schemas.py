@@ -28,6 +28,8 @@ class AccessRequestOut(BaseModel):
     decision_comment: str | None
     created_at: datetime
     decided_at: datetime | None
+    access_expires_at: datetime | None
+    connect_issued_at: datetime | None
 
     model_config = {"from_attributes": True}
 
@@ -40,3 +42,7 @@ class AuditEventOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class ConnectOut(BaseModel):
+    redirect_url: str
