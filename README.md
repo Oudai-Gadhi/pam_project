@@ -14,6 +14,25 @@ Phase 2 adds a broker-owned Postgres database and the following server-enforced 
 
 Approvers cannot decide their own requests. Phase 2 records approval only; it does not yet issue credentials or open a session.
 
+## JIT SSH access
+
+The current application accepts a target IP address and Linux username, then
+allows access only if that pair is administrator-registered in
+`PAM_TARGETS_JSON`. The backend creates a short-lived Vault-signed SSH
+certificate only when an approved requester selects **Connect**.
+
+To onboard an Ubuntu target from the PAM VM, use:
+
+```bash
+chmod +x scripts/add-ubuntu-target.sh
+./scripts/add-ubuntu-target.sh <ubuntu-ip> <ubuntu-admin-user> <target-linux-user>
+```
+
+The script installs the Vault SSH CA public key, configures the target's
+OpenSSH certificate trust, adds the target to the local PAM allow-list, and
+restarts the PAM backend. Keep a separate administrator SSH session open while
+onboarding a new server.
+
 ## Architecture (Phase 1)
 
 ```

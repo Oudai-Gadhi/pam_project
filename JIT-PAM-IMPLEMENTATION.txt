@@ -17,7 +17,9 @@ auditing. If source-address is later enabled, use only the guacd egress CIDR.
 Implemented application behavior
 --------------------------------
 * Keycloak groups remain enforced: pam_users request and approvers decide.
-* Targets and permitted Linux accounts are allow-listed in PAM_TARGETS_JSON.
+* Requesters enter a target IP address. Targets and permitted Linux accounts
+  are allow-listed in PAM_TARGETS_JSON, so users cannot route Guacamole to an
+  unregistered IP address.
 * Browser IP is saved in the request audit record.
 * Approval sets a fixed access expiry time.
 * The requester receives one Connect action before expiry.
@@ -106,7 +108,7 @@ VAULT_SSH_ROLE=dev-role
 VAULT_VERIFY_TLS=false
 GUACAMOLE_PUBLIC_URL=http://<pamvm-ip>:8081/guacamole
 GUACAMOLE_JSON_SECRET=<same 32 hexadecimal characters>
-PAM_TARGETS_JSON={"rhel-lab":{"host":"<rhel-ip>","port":22,"users":["oudai"]}}
+PAM_TARGETS_JSON={"<target-ip>":{"host":"<target-ip>","port":22,"users":["oudai"]}}
 
 For the current lab, host.docker.internal lets the backend container contact
 Vault on the VM. Production must use Vault HTTPS and a dedicated least-privilege
@@ -119,9 +121,17 @@ From this project directory:
 docker compose up --build -d
 docker compose logs -f backend
 
+To add an Ubuntu target from pamvm, run:
+
+chmod +x scripts/add-ubuntu-target.sh
+./scripts/add-ubuntu-target.sh <ubuntu-ip> <ubuntu-admin-user> <target-linux-user>
+
+The script copies the CA key, configures sshd certificate trust, registers the
+target IP in PAM_TARGETS_JSON, and restarts only the backend.
+
 Test in this order:
 1. Prove direct Vault-certificate login to RHEL before testing Guacamole.
-2. Sign in as a pam_users member and request rhel-lab / oudai.
+2. Sign in as a pam_users member and request the registered target IP / oudai.
 3. Sign in as another approver and approve it.
 4. Return as requester and click Connect.
 5. Inspect RHEL: journalctl -fu sshd.

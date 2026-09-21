@@ -51,7 +51,7 @@ VAULT_SSH_ROLE=dev-role
 VAULT_VERIFY_TLS=false
 GUACAMOLE_PUBLIC_URL=http://${PUBLIC_HOST}:8081/guacamole
 GUACAMOLE_JSON_SECRET=replace-with-32-random-hex-characters
-PAM_TARGETS_JSON={"rhel-lab":{"host":"10.0.0.50","port":22,"users":["oudai"]}}
+PAM_TARGETS_JSON={"10.0.0.50":{"host":"10.0.0.50","port":22,"users":["oudai"]}}
 
 VITE_KEYCLOAK_URL=http://${PUBLIC_HOST}:8080
 VITE_KEYCLOAK_REALM=pam
