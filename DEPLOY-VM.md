@@ -43,7 +43,7 @@ In Keycloak Admin (from Windows: `http://<VM-IP>:8080/admin`):
 |-------|-------|
 | Valid redirect URIs | `http://<VM-IP>:3000/*` |
 | Web origins | `http://<VM-IP>:3000` |
-| PKCE Method | S256 |
+| PKCE Method | S256 (optional — app skips PKCE on http://IP without HTTPS) |
 
 Keep the **Group Membership** mapper (`groups` claim on access token).
 
@@ -99,6 +99,7 @@ The login page shows the Keycloak URL it will use — it must be `http://<VM-IP>
 | 401 on /api/me after login | JWT `iss` mismatch — fix Keycloak `KC_HOSTNAME` to VM IP |
 | Can't reach app from Windows | Firewall + VM network security group must allow 3000, 8000, 8080 |
 | Redirect error from Keycloak | Add `http://<VM-IP>:3000/*` to client redirect URIs |
+| Web Crypto API is not available | Pull latest code (PKCE auto-disabled on HTTP+IP), rebuild frontend |
 
 ## 7. After changing VM IP
 

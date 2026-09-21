@@ -9,8 +9,30 @@ const keycloak = new Keycloak({
   clientId: config.keycloakClientId,
 });
 
-// keycloak-js allows only ONE init() per instance — cache the promise for React StrictMode
 let initPromise = null;
+
+/**
+ * PKCE (S256) needs Web Crypto API, which browsers only expose in "secure contexts":
+ * HTTPS, or http://localhost — NOT http://192.168.x.x over plain HTTP.
+ * When accessing the VM by IP from Windows, we skip PKCE (dev-mode fallback).
+ */
+export function isSecureContext() {
+  return typeof crypto !== 'undefined' && typeof crypto.subtle !== 'undefined';
+}
+
+function getInitOptions() {
+  const options = {
+    onLoad: 'check-sso',
+    checkLoginIframe: false,
+    enableLogging: import.meta.env.DEV,
+  };
+
+  if (isSecureContext()) {
+    options.pkceMethod = 'S256';
+  }
+
+  return options;
+}
 
 export function getKeycloakConfigError() {
   return validateAppConfig();
@@ -24,14 +46,8 @@ export function initKeycloak() {
 
   if (!initPromise) {
     initPromise = keycloak
-      .init({
-        onLoad: 'check-sso',
-        pkceMethod: 'S256',
-        checkLoginIframe: false,
-        enableLogging: import.meta.env.DEV,
-      })
+      .init(getInitOptions())
       .catch((error) => {
-        // Allow retry after a failed init (e.g. Keycloak was still starting)
         initPromise = null;
         throw error;
       });
@@ -46,7 +62,6 @@ export function loginWithKeycloak() {
     return Promise.reject(new Error(configError));
   }
 
-  // Full page redirect — must use a URL registered in the Keycloak client
   return keycloak.login({
     redirectUri: `${window.location.origin}/`,
   });

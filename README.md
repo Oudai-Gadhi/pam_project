@@ -16,7 +16,7 @@ Linux VM (no browser)
 
 **Security principle:** The frontend reads groups for UX routing only. The backend **always** verifies JWT signatures against Keycloak JWKS before trusting any claim.
 
-> **Browsing from Windows, app on a headless VM?** See **[DEPLOY-VM.md](./DEPLOY-VM.md)** for the full setup guide.
+> **Browsing from Windows, app on a headless VM?** See **[DEPLOY-VM.md](./DEPLOY-VM.md)** and **[KEYCLOAK-SETUP.md](./KEYCLOAK-SETUP.md)** for full setup guides.
 
 ## Prerequisites
 
