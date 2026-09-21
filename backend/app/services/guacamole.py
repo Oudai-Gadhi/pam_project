@@ -24,9 +24,10 @@ def build_redirect_url(
     credential: IssuedSshCredential,
 ) -> str:
     """Return a Guacamole auth-json handoff URL without persisting SSH material."""
-    # Guacamole's SSH `public-key` parameter takes the Base64 portion of the
-    # OpenSSH public credential. For a Vault SSH certificate that credential
-    # is the `ssh-*-cert-v01@openssh.com` line returned by Vault.
+    # Guacamole passes this parameter to libssh2 as the contents of a public
+    # key file. For a Vault SSH certificate it must therefore contain the full
+    # OpenSSH `ssh-*-cert-v01@openssh.com <base64>` line, not only its Base64
+    # portion.
     certificate_parts = credential.certificate.split()
     if len(certificate_parts) < 2:
         raise ValueError("Vault returned an invalid SSH certificate")
@@ -42,7 +43,7 @@ def build_redirect_url(
                     "port": str(target_port),
                     "username": target_username,
                     "private-key": credential.private_key,
-                    "public-key": certificate_parts[1],
+                    "public-key": credential.certificate,
                 },
             }
         },

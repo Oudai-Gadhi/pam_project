@@ -26,9 +26,9 @@ Implemented application behavior
   user key is required for Guacamole/libssh2 certificate compatibility; Vault's
   signing CA may remain Ed25519.
 * Private key and certificate are never stored in Postgres.
-* Backend makes a one-connection Guacamole auth-json payload, passes the
-  Vault certificate in Guacamole's SSH public-key field, HMAC-SHA256-signs and
-  AES-128-CBC-encrypts it, then redirects the browser.
+* Backend makes a one-connection Guacamole auth-json payload, passes the full
+  Vault OpenSSH certificate line in Guacamole's SSH public-key field,
+  HMAC-SHA256-signs and AES-128-CBC-encrypts it, then redirects the browser.
 
 Files added/changed
 -------------------
