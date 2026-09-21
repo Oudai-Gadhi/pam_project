@@ -1,5 +1,8 @@
 import Keycloak from 'keycloak-js';
+import { installCryptoPolyfill } from './crypto-polyfill';
 import { getAppConfig, validateAppConfig } from './config';
+
+installCryptoPolyfill();
 
 const config = getAppConfig();
 
@@ -12,23 +15,29 @@ const keycloak = new Keycloak({
 let initPromise = null;
 
 /**
- * PKCE (S256) needs Web Crypto API, which browsers only expose in "secure contexts":
- * HTTPS, or http://localhost — NOT http://192.168.x.x over plain HTTP.
- * When accessing the VM by IP from Windows, we skip PKCE (dev-mode fallback).
+ * Secure context = HTTPS or http://localhost.
+ * http://192.168.x.x over plain HTTP is NOT secure — crypto.subtle is blocked.
  */
 export function isSecureContext() {
+  if (typeof window !== 'undefined' && window.isSecureContext) {
+    return window.isSecureContext;
+  }
   return typeof crypto !== 'undefined' && typeof crypto.subtle !== 'undefined';
 }
 
 function getInitOptions() {
+  const secure = isSecureContext();
+
   const options = {
-    onLoad: 'check-sso',
     checkLoginIframe: false,
     enableLogging: import.meta.env.DEV,
+    // MUST be explicit false — keycloak-js defaults to S256 if omitted
+    pkceMethod: secure ? 'S256' : false,
   };
 
-  if (isSecureContext()) {
-    options.pkceMethod = 'S256';
+  // check-sso triggers a hidden login during init which also needs crypto
+  if (secure) {
+    options.onLoad = 'check-sso';
   }
 
   return options;

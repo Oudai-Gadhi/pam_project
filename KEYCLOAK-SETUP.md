@@ -159,11 +159,14 @@ apiBaseUrl: "http://192.168.1.36:8000"
 
 ## "Web Crypto API is not available"
 
-This happens because you access the app as **http://192.168.1.36** (plain HTTP + IP). Browsers block crypto unless it's HTTPS or localhost.
+This happens because you access the app as **http://192.168.1.36** (plain HTTP + IP). Browsers block `crypto.subtle` and `crypto.randomUUID` unless it's HTTPS or localhost.
 
-**Fix applied in code:** PKCE is skipped automatically on non-secure contexts.
+**Fix applied in code (v2):**
+- Explicitly sets `pkceMethod: false` (omitting it left the default S256)
+- Polyfills `crypto.randomUUID` for OAuth state/nonce
+- Skips silent SSO check on non-secure contexts
 
-After `git pull && docker compose up --build -d frontend`, login should work.
+After `git pull && docker compose up --build -d frontend`, hard-refresh the browser (Ctrl+Shift+R).
 
 **Alternative (more secure):** SSH tunnel from Windows so you use localhost:
 ```powershell
