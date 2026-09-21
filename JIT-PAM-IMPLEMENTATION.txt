@@ -21,8 +21,10 @@ Implemented application behavior
 * Browser IP is saved in the request audit record.
 * Approval sets a fixed access expiry time.
 * The requester receives one Connect action before expiry.
-* On Connect, the backend generates an Ed25519 key only in memory, sends only
-  its public key to Vault, then receives a short-lived signed certificate.
+* On Connect, the backend generates an in-memory RSA-3072 key, sends only its
+  public key to Vault, then receives a short-lived signed certificate. The RSA
+  user key is required for Guacamole/libssh2 certificate compatibility; Vault's
+  signing CA may remain Ed25519.
 * Private key and certificate are never stored in Postgres.
 * Backend makes a one-connection Guacamole auth-json payload, passes the
   Vault certificate in Guacamole's SSH public-key field, HMAC-SHA256-signs and

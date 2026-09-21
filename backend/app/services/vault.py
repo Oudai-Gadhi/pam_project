@@ -1,9 +1,8 @@
-import base64
 from dataclasses import dataclass
 
 import httpx
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.asymmetric.rsa import generate_private_key
 
 from app.config import Settings
 
@@ -20,11 +19,16 @@ class IssuedSshCredential:
 
 
 def issue_ssh_credential(settings: Settings, *, principal: str, ttl_minutes: int) -> IssuedSshCredential:
-    """Generate a key only in process memory and ask Vault to sign its public half."""
-    private_key = Ed25519PrivateKey.generate()
+    """Generate an in-memory RSA key and ask Vault to sign its public half.
+
+    Guacamole's libssh2-based SSH client supports RSA OpenSSH certificates;
+    it rejects Ed25519 certificate credentials. Vault's CA can still remain
+    Ed25519 because the generated *user* key determines certificate type.
+    """
+    private_key = generate_private_key(public_exponent=65537, key_size=3072)
     private_text = private_key.private_bytes(
         serialization.Encoding.PEM,
-        serialization.PrivateFormat.OpenSSH,
+        serialization.PrivateFormat.TraditionalOpenSSL,
         serialization.NoEncryption(),
     ).decode("utf-8")
     public_text = private_key.public_key().public_bytes(
