@@ -29,14 +29,15 @@ services:
         VITE_KEYCLOAK_URL: http://${PUBLIC_HOST:?Set PUBLIC_HOST in .env}:8080
         VITE_KEYCLOAK_REALM: ${KEYCLOAK_REALM:-pam}
         VITE_KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-pam-app}
-        VITE_API_BASE_URL: http://${PUBLIC_HOST:?Set PUBLIC_HOST in .env}:8000
+        VITE_API_BASE_URL: http://${PUBLIC_HOST:?Set PUBLIC_HOST in .env}:3000
     container_name: pam-frontend
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       PUBLIC_HOST: ${PUBLIC_HOST:?Set PUBLIC_HOST in .env}
       KEYCLOAK_PUBLIC_URL: http://${PUBLIC_HOST}:8080
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-pam}
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-pam-app}
-      API_BASE_URL: http://${PUBLIC_HOST}:8000
     ports:
       - "3000:80"
     depends_on:

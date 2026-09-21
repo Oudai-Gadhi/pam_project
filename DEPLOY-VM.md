@@ -83,7 +83,7 @@ docker compose logs -f
 |-------|-----|
 | Frontend config | http://\<VM-IP\>:3000/config.js |
 | Frontend app | http://\<VM-IP\>:3000 |
-| Backend health | http://\<VM-IP\>:8000/health |
+| Backend health | http://\<VM-IP\>:3000/health (proxied) or :8000 direct |
 | Keycloak | http://\<VM-IP\>:8080 |
 
 Open http://\<VM-IP\>:3000 in Chrome/Edge → **Sign in with Keycloak**.
@@ -95,7 +95,7 @@ The login page shows the Keycloak URL it will use — it must be `http://<VM-IP>
 | Symptom | Fix |
 |---------|-----|
 | Login button does nothing | Check http://\<VM-IP\>:3000/config.js — URLs must use VM IP |
-| CORS error | `FRONTEND_URL` in `.env` must be `http://<VM-IP>:3000`, restart backend |
+| Failed to fetch / CORS after login | Pull latest — API is proxied via `:3000/api` (same origin). Run `docker compose up --build -d frontend` |
 | 401 on /api/me after login | JWT `iss` mismatch — fix Keycloak `KC_HOSTNAME` to VM IP |
 | Can't reach app from Windows | Firewall + VM network security group must allow 3000, 8000, 8080 |
 | Redirect error from Keycloak | Add `http://<VM-IP>:3000/*` to client redirect URIs |
