@@ -4,7 +4,7 @@
 <!--                          HEADER                              -->
 <!-- ═══════════════════════════════════════════════════════════ -->
 
-<img src="https://img.shields.io/badge/status-production--ready-brightgreen?style=for-the-badge" alt="status">
+<img src="https://img.shields.io/badge/status-lab--ready-brightgreen?style=for-the-badge" alt="status">
 <img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="license">
 <img src="https://img.shields.io/badge/version-1.0.0-purple?style=for-the-badge" alt="version">
 
@@ -18,7 +18,7 @@
 
 <br>
 
-A production-grade reference implementation of just-in-time privileged access — replacing long-lived SSH keys and shared passwords with **short-lived certificates that exist only for the duration of an approved session**.
+A reference implementation of just-in-time privileged access — replacing long-lived SSH keys and shared passwords with **short-lived certificates that exist only for the duration of an approved session**.
 
 <br>
 
@@ -101,6 +101,41 @@ It shouldn't. And in JIT-PAM, it doesn't.
 ║                                                              ║
 ╚══════════════════════════════════════════════════════════════╝
 ```
+
+<br>
+
+### What Makes This Different
+
+<table>
+  <thead>
+    <tr>
+      <th width="30%">Feature</th>
+      <th width="70%">Why it matters</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>One-shot issuance</strong></td>
+      <td>The Connect endpoint locks the request row with <code>SELECT … FOR UPDATE</code>. A request can produce exactly one certificate — replay is impossible at the database level.</td>
+    </tr>
+    <tr>
+      <td><strong>Four independent trust boundaries</strong></td>
+      <td>Keycloak, the Broker, Vault, and the target's <code>sshd</code> each enforce their own rule. Compromising one doesn't collapse the others.</td>
+    </tr>
+    <tr>
+      <td><strong>Cross-distro onboarding in one command</strong></td>
+      <td><code>subscribe-vm.sh</code> configures Ubuntu 20.04+ and RHEL/Rocky/Alma 8–9 targets the same way: installs the CA, writes principals files, handles SELinux, reloads sshd, registers the target.</td>
+    </tr>
+    <tr>
+      <td><strong>RSA-3072 user keys</strong></td>
+      <td>Generated in-memory because Guacamole's libssh2 rejects Ed25519 certificates. Vault's CA stays Ed25519 — only the user key type is constrained.</td>
+    </tr>
+    <tr>
+      <td><strong>Encrypted handoff to Guacamole</strong></td>
+      <td>The private key travels inside an HMAC-SHA256-signed, AES-128-CBC-encrypted envelope shared only by the Broker and Guacamole. No file ever lands on disk.</td>
+    </tr>
+  </tbody>
+</table>
 
 ---
 
@@ -314,6 +349,12 @@ It is tempting to think of this as one system. It is two, and they never overlap
 
 > 🔒 If `pam-db` is exfiltrated, no credentials leak. The database contains only metadata: who requested, what they requested, when, and the certificate serial number.
 
+### Why `source-address` Can't Be the User's IP
+
+When Guacamole is in the path, the TCP client that reaches the target is **`guacd`**, not the developer's browser. If the Vault role sets a `source-address` critical option to the browser IP, the target will reject the session — the source IP is `guacd`'s, not the browser's.
+
+The broker records the browser IP in the audit trail instead. If you later want `source-address` enforcement, use the `guacd` egress CIDR.
+
 ---
 
 ## 🚀 Quick Start
@@ -334,12 +375,16 @@ It is tempting to think of this as one system. It is two, and they never overlap
     <td>v2</td>
   </tr>
   <tr>
-    <td>Linux VM (Ubuntu 22.04+)</td>
+    <td>Linux VM (Ubuntu 22.04+ or RHEL 9)</td>
     <td>with sudo</td>
   </tr>
   <tr>
     <td>Target server with <code>sshd</code></td>
-    <td>Ubuntu 22.04+ or RHEL 8+</td>
+    <td>Ubuntu 20.04+ or RHEL 8/9</td>
+  </tr>
+  <tr>
+    <td><code>jq</code> on the VM</td>
+    <td>used by the onboarding script</td>
   </tr>
 </table>
 
@@ -347,10 +392,10 @@ It is tempting to think of this as one system. It is two, and they never overlap
 
 ```text
   ┌─────────────────────────────────────────────────────────────┐
-  │  1. Configure Vault   (persistent storage + SSH engine)     │
-  │  2. Configure Keycloak (realm, groups, client)              │
-  │  3. Configure Broker  (.env with Vault + Guac + Keycloak)   │
-  │  4. Onboard targets   (install Vault CA public key)         │
+  │  1. Configure .env   (PUBLIC_HOST, VAULT_TOKEN, Guac secret)│
+  │  2. Bring up Vault   (unseal) + Guacamole + Keycloak        │
+  │  3. Configure Keycloak (realm, groups, client)              │
+  │  4. Onboard a target (subscribe-vm.sh)                      │
   │  5. docker compose up -d                                    │
   │  6. Sign in → request → approve → connect                   │
   └─────────────────────────────────────────────────────────────┘
@@ -362,78 +407,129 @@ It is tempting to think of this as one system. It is two, and they never overlap
 ```bash
 git clone https://github.com/<your-org>/pam_project.git
 cd pam_project
-chmod +x scripts/setup-env.sh
-./scripts/setup-env.sh <VM-IP>
+cp .env.example .env
+${EDITOR:-vi} .env
 ```
-*Only `PUBLIC_HOST` needs to be your real VM IP. Everything else derives from it.*
+
+Set at minimum:
+
+| Variable | Value |
+|---|---|
+| `PUBLIC_HOST` | Your VM's LAN IP (e.g. `192.168.1.36`) |
+| `VAULT_TOKEN` | Root token from `guac-vault-stack/vault-init.txt` |
+| `GUACAMOLE_JSON_SECRET` | 32 hex chars — **must match** `GUAC_JSON_SECRET` in `guac-vault-stack/.env` |
+| `PAM_DB_PASSWORD` | A real password, not the placeholder |
+
+Generate the Guacamole secret if you don't have one:
+
+```bash
+openssl rand -hex 16
+```
 </details>
 
 <details>
-<summary><b>Step 2 · Bring Up Vault</b></summary>
+<summary><b>Step 2 · Bring Up Vault, Guacamole &amp; Keycloak</b></summary>
+
+**Vault + Guacamole** (`guac-vault-stack/`):
 
 ```bash
-cd ../guac-vault-stack
-docker compose up -d vault
+cd guac-vault-stack
+docker compose up -d
 
-# One-time init — SAVE THE OUTPUT
-docker exec vault vault operator init -key-shares=1 -key-threshold=1 > vault-init.txt
-chmod 600 vault-init.txt
+# Vault re-seals on every restart
+./unseal.sh
 
-# Unseal
-UNSEAL_KEY=$(grep 'Unseal Key 1' vault-init.txt | awk '{print $NF}')
-docker exec vault vault operator unseal "$UNSEAL_KEY"
-
-# Enable the SSH signing engine
-ROOT_TOKEN=$(grep 'Initial Root Token' vault-init.txt | awk '{print $NF}')
-docker exec -i -e VAULT_ADDR=http://127.0.0.1:8210 -e VAULT_TOKEN="$ROOT_TOKEN" vault \
-  vault secrets enable -path=ssh-client-signer ssh
-
-docker exec -e VAULT_ADDR=http://127.0.0.1:8210 -e VAULT_TOKEN="$ROOT_TOKEN" vault \
-  vault write ssh-client-signer/config/ca generate_signing_key=true
-
-docker exec -i -e VAULT_ADDR=http://127.0.0.1:8210 -e VAULT_TOKEN="$ROOT_TOKEN" vault \
-  vault write ssh-client-signer/roles/dev-role - <<'EOF'
-{
-  "key_type": "ca",
-  "allow_user_certificates": true,
-  "allowed_users": "oudai,ubuntu,deploy",
-  "ttl": "1h",
-  "max_ttl": "720h",
-  "default_extensions": {"permit-pty": ""}
-}
-EOF
+# Verify
+docker exec -e VAULT_ADDR=http://127.0.0.1:8210 vault vault status | grep Sealed
+# Sealed  false
 ```
-> 💾 Back up `vault-init.txt` immediately. Without the unseal key, Vault is unrecoverable.
+
+**Keycloak** (`keycloak/`):
+
+```bash
+cd ../keycloak
+docker compose up -d
+
+# Verify the issuer matches what the browser sees
+curl -s http://<VM-IP>:8080/realms/pam/.well-known/openid-configuration \
+  | grep '"issuer"'
+# "issuer": "http://192.168.1.36:8080/realms/pam"
+```
+
+> 💾 Back up `guac-vault-stack/vault-init.txt` immediately. Without the unseal key, Vault is unrecoverable.
 </details>
 
 <details>
 <summary><b>Step 3 · Configure Keycloak</b></summary>
 
 Follow `KEYCLOAK-SETUP.md`. At minimum:
+
 - ✅ Create realm `pam`
 - ✅ Create groups `pam_users` and `approvers`
-- ✅ Create public client `pam-app` with valid redirect URIs
-- ✅ Add a Group Membership mapper to emit the `groups` claim on access tokens
+- ✅ Create public client `pam-app` with redirect `http://<VM-IP>:3000/*`
+- ✅ Add a Group Membership mapper that emits `groups` on access tokens
+
+Without the mapper, every authenticated user lands on `/unauthorized`.
 </details>
 
 <details>
 <summary><b>Step 4 · Onboard a Target Server</b></summary>
 
+From `pam_project/`:
+
 ```bash
-cd pam_project
-./scripts/add-ubuntu-target.sh <TARGET-IP> <ADMIN-USER> <LINUX-USER>
+./scripts/subscribe-vm.sh <TARGET-IP> <ADMIN-USER> <CERT-USERS> [SSH-PORT]
 ```
-*This copies the Vault CA public key to the target, configures `sshd` to trust it, and registers the target in `PAM_TARGETS_JSON`.*
+
+Examples:
+
+```bash
+./scripts/subscribe-vm.sh 192.168.1.173 ubuntu oudai
+./scripts/subscribe-vm.sh 192.168.1.174 ec2-user oudai,deploy
+```
+
+The script:
+
+1. Copies the Vault CA public key to the target
+2. Installs it at `/etc/ssh/trusted-user-ca-keys.pem` (SELinux-labeled on RHEL)
+3. Writes `/etc/ssh/sshd_config.d/90-vault-ca.conf`
+4. Creates `/etc/ssh/auth_principals/<user>` for each cert user
+5. Validates with `sshd -t`, then reloads `sshd`
+6. Merges the target into `PAM_TARGETS_JSON` in `.env`
+7. Recreates the backend
+
+You'll be prompted for the target's SSH password and sudo password once. The script runs `ssh -t` so `sudo` can prompt.
+
+**Prove cert login before touching the browser:**
+
+```bash
+ssh-keygen -q -t ed25519 -N "" -f /tmp/test-key -C test-cert
+
+ROOT_TOKEN=$(grep 'Initial Root Token' ../guac-vault-stack/vault-init.txt | awk '{print $NF}')
+docker exec -i -e VAULT_ADDR=http://127.0.0.1:8210 -e VAULT_TOKEN="$ROOT_TOKEN" \
+  vault vault write -format=json ssh-client-signer/sign/dev-role - <<EOF \
+  | jq -r .data.signed_key > /tmp/test-key-cert.pub
+{"public_key":"$(cat /tmp/test-key.pub)","valid_principals":"oudai","ttl":"5m"}
+EOF
+
+ssh -o IdentitiesOnly=yes -i /tmp/test-key \
+    -o CertificateFile=/tmp/test-key-cert.pub \
+    oudai@<TARGET-IP>
+```
+
+A shell prompt means the whole target-side chain works: Vault signed, sshd trusted, principal accepted.
 </details>
 
 <details>
-<summary><b>Step 5 · Start the Application</b></summary>
+<summary><b>Step 5 · Start the PAM Application</b></summary>
 
 ```bash
 cd pam_project
 docker compose up --build -d
 docker compose ps
 ```
+
+Wait for `pam-backend` to report `healthy` — `pam-frontend` depends on it.
 </details>
 
 <details>
@@ -445,6 +541,13 @@ Open `http://<VM-IP>:3000` in a browser. Sign in with Keycloak.
 | :--- | :--- |
 | `pam_users` | Submit access requests, click Connect on approved ones |
 | `approvers` | Review pending requests, approve or reject with a comment |
+
+End-to-end:
+
+1. Sign in as `pam_users` → submit a request (target IP, Linux user, justification, duration)
+2. Sign in as a **different** `approvers` user → approve or reject with a comment
+3. Return to the requester → click **Connect**
+4. Guacamole opens a terminal on the target
 </details>
 
 ---
@@ -526,6 +629,21 @@ Open `http://<VM-IP>:3000` in a browser. Sign in with Keycloak.
 
 Every architectural decision flows from this: the database stores serial numbers, not keys; Vault signs public keys, it doesn't hold private keys; Guacamole receives keys in encrypted envelopes, not files. If a component is compromised, there is nothing to steal that remains useful.
 
+### ⚠️ Lab Notes
+
+This is a **lab reference implementation**. The following are acceptable here but **must be changed before production**:
+
+| Item | Lab | Production |
+|---|---|---|
+| Transport | Plain HTTP | HTTPS everywhere (nginx, Keycloak, Vault) |
+| Vault auth | Root token | AppRole with a scoped policy |
+| Vault unseal | Shamir, manual | Auto-unseal via KMS or transit Vault |
+| Database migrations | Startup `ALTER TABLE` | Alembic |
+| Rate limiting | None | Per-IP and per-identity limits |
+| Host key verification | Disabled (guacd → target) | Pinned fingerprints |
+| Session recording | None | `guacenc` for replay |
+| Reverse proxy | nginx plain | TLS-terminating proxy |
+
 ---
 
 ## 🔧 Operations
@@ -546,11 +664,11 @@ Every architectural decision flows from this: the database stores serial numbers
     </tr>
     <tr>
       <td>Add a new target</td>
-      <td><code>./scripts/add-ubuntu-target.sh &lt;IP&gt; &lt;ADMIN&gt; &lt;USER&gt;</code></td>
+      <td><code>./scripts/subscribe-vm.sh &lt;IP&gt; &lt;ADMIN&gt; &lt;USER[,USER2]&gt;</code></td>
     </tr>
     <tr>
       <td>Check Vault status</td>
-      <td><code>docker exec vault vault status</code></td>
+      <td><code>docker exec -e VAULT_ADDR=http://127.0.0.1:8210 vault vault status</code></td>
     </tr>
     <tr>
       <td>View backend logs</td>
@@ -573,11 +691,12 @@ cd guac-vault-stack
 ./unseal.sh
 ```
 
-Or manually:
+Or manually (note the port — Vault listens on `8210`, not `8200`):
 
 ```bash
 UNSEAL_KEY=$(grep 'Unseal Key 1' vault-init.txt | awk '{print $NF}')
-docker exec vault vault operator unseal "$UNSEAL_KEY"
+docker exec -e VAULT_ADDR=http://127.0.0.1:8210 vault \
+  vault operator unseal "$UNSEAL_KEY"
 ```
 </details>
 
@@ -585,18 +704,20 @@ docker exec vault vault operator unseal "$UNSEAL_KEY"
 <summary><b>➕ Adding a New Target</b></summary>
 
 ```bash
-./scripts/add-ubuntu-target.sh <IP> <ADMIN-USER> <LINUX-USER>
+./scripts/subscribe-vm.sh <IP> <ADMIN-USER> <LINUX-USER>[,<LINUX-USER2>,...]
 ```
 
-The script:
-1. Copies the Vault CA public key to the target
-2. Installs it at `/etc/ssh/trusted-user-ca-keys.pem`
-3. Configures `sshd_config.d/90-vault-ca.conf`
-4. Creates `/etc/ssh/auth_principals/<LINUX-USER>`
-5. Merges the target into `PAM_TARGETS_JSON`
-6. Restarts the backend
+The script is idempotent — safe to re-run to add users or refresh the CA:
 
-*Prerequisite: `pamvm` must be able to SSH and `sudo` to the target without a password.*
+1. Copies the Vault CA public key to the target
+2. Installs it at `/etc/ssh/trusted-user-ca-keys.pem` (SELinux-labeled on RHEL)
+3. Writes `/etc/ssh/sshd_config.d/90-vault-ca.conf`
+4. Creates `/etc/ssh/auth_principals/<user>` for each cert user
+5. Reloads `sshd` after `sshd -t` passes
+6. Merges the target into `PAM_TARGETS_JSON` in `.env`
+7. Recreates the backend
+
+*Prerequisite: `pamvm` must be able to SSH to the target's admin user. A password prompt is fine — the script passes `-t` to allocate a TTY.*
 </details>
 
 <details>
@@ -604,7 +725,8 @@ The script:
 
 Two places must agree:
 
-1. Vault role's `allowed_users`:
+**1. Vault role's `allowed_users`**
+
 ```bash
 ROOT_TOKEN=$(grep 'Initial Root Token' guac-vault-stack/vault-init.txt | awk '{print $NF}')
 docker exec -i -e VAULT_ADDR=http://127.0.0.1:8210 -e VAULT_TOKEN="$ROOT_TOKEN" vault \
@@ -613,14 +735,14 @@ docker exec -i -e VAULT_ADDR=http://127.0.0.1:8210 -e VAULT_TOKEN="$ROOT_TOKEN" 
   "key_type": "ca",
   "allow_user_certificates": true,
   "allowed_users": "oudai,ubuntu,deploy,backup",
-  "ttl": "1h",
-  "max_ttl": "720h",
+  "ttl": "30m",
+  "max_ttl": "1h",
   "default_extensions": {"permit-pty": ""}
 }
 EOF
 ```
 
-2. Target's `/etc/ssh/auth_principals/<user>` — handled automatically by the onboarding script.
+**2. Target's `/etc/ssh/auth_principals/<user>`** — handled automatically by `subscribe-vm.sh`. Just re-run it with the updated user list.
 </details>
 
 <details>
@@ -629,19 +751,18 @@ EOF
 Rotating the CA invalidates every installed `trusted-user-ca-keys.pem`. All targets must be updated.
 
 ```bash
+ROOT_TOKEN=$(grep 'Initial Root Token' guac-vault-stack/vault-init.txt | awk '{print $NF}')
+
 # Regenerate
 docker exec -e VAULT_ADDR=http://127.0.0.1:8210 -e VAULT_TOKEN="$ROOT_TOKEN" vault \
   vault write -f ssh-client-signer/config/ca rotate
 
-# Re-export and reinstall on every target
+# Re-export
 docker exec -e VAULT_ADDR=http://127.0.0.1:8210 -e VAULT_TOKEN="$ROOT_TOKEN" vault \
-  vault read -field=public_key ssh-client-signer/config/ca > vault_ca.pub
+  vault read -field=public_key ssh-client-signer/config/ca > guac-vault-stack/vault_ca.pub
 
-for host in <list of targets>; do
-  scp vault_ca.pub admin@$host:/tmp/
-  ssh admin@$host "sudo install -m 0644 /tmp/vault_ca.pub \
-    /etc/ssh/trusted-user-ca-keys.pem && sudo systemctl reload sshd"
-done
+# Re-run subscribe-vm.sh for every target so they install the new CA
+./scripts/subscribe-vm.sh <IP> <ADMIN> <USERS>
 ```
 </details>
 
@@ -763,39 +884,52 @@ sudo journalctl --vacuum-size=200M
 ## 📁 Project Structure
 
 ```text
-pam_project/
+pam-platform/
 │
-├── 🐍 backend/                        FastAPI broker
-│   ├── app/
-│   │   ├── auth/                      JWT validation, group dependencies
-│   │   ├── routes/                    HTTP endpoints
-│   │   ├── services/                  Vault + Guacamole integrations
-│   │   ├── config.py                  Pydantic settings
-│   │   ├── database.py                SQLAlchemy engine/session
-│   │   ├── models.py                  AccessRequest, AuditEvent
-│   │   ├── schemas.py                 Pydantic DTOs
-│   │   └── main.py                    FastAPI app entrypoint
-│   └── Dockerfile
+├── guac-vault-stack/                   Vault + Guacamole stack
+│   ├── docker-compose.yaml
+│   ├── guac/init/01-initdb.sql         Guacamole DB schema
+│   ├── debug/test-vault-signing.sh     Manual Vault-sign debug tool
+│   ├── unseal.sh                       Unseal Vault after restart
+│   ├── vault_ca.pub                    Exported CA (used by subscribe-vm.sh)
+│   └── vault-init.txt                  🔒 unseal key + root token (gitignored)
 │
-├── ⚛️  frontend/                       React SPA
-│   ├── src/
-│   │   ├── api/                       Axios client w/ Keycloak interceptor
-│   │   ├── components/                Header, ProtectedRoute, RequestStatus
-│   │   ├── context/                   KeycloakContext
-│   │   ├── pages/                     Login, Dashboards, RolePicker
-│   │   └── keycloak.js                Keycloak JS adapter
-│   ├── public/config.js               Runtime config injected by nginx
-│   └── Dockerfile                     Multi-stage build
+├── keycloak/                           Identity provider
+│   ├── docker-compose.yaml
+│   └── .env                            🔒 DB + admin secrets (gitignored)
 │
-├── 🛠️  scripts/
-│   ├── add-ubuntu-target.sh           Onboard a target SSH server
-│   └── setup-env.sh                   Generate .env for a new VM
-│
-├── 🐳 docker-compose.yml              Broker + DB + Frontend
-├── 📘 KEYCLOAK-SETUP.md               Realm/client configuration guide
-├── 📘 DEPLOY-VM.md                    VM deployment walkthrough
-├── 📘 JIT-PAM-IMPLEMENTATION.txt      Design notes
-└── 📖 README.md                       You are here
+└── pam_project/                        The PAM application
+    │
+    ├── 🐍 backend/                     FastAPI broker
+    │   ├── app/
+    │   │   ├── auth/                   JWT validation, group dependencies
+    │   │   ├── routes/                 HTTP endpoints
+    │   │   ├── services/               Vault + Guacamole integrations
+    │   │   ├── config.py               Pydantic settings
+    │   │   ├── database.py             SQLAlchemy engine/session
+    │   │   ├── models.py               AccessRequest, AuditEvent
+    │   │   ├── schemas.py              Pydantic DTOs
+    │   │   └── main.py                 FastAPI app entrypoint
+    │   └── Dockerfile
+    │
+    ├── ⚛️  frontend/                    React SPA
+    │   ├── src/
+    │   │   ├── api/                    Axios client w/ Keycloak interceptor
+    │   │   ├── components/             Header, ProtectedRoute, RequestStatus
+    │   │   ├── context/                KeycloakContext
+    │   │   ├── pages/                  Login, Dashboards, RolePicker
+    │   │   └── keycloak.js             Keycloak JS adapter
+    │   ├── public/config.js            Runtime config injected by nginx
+    │   └── Dockerfile                  Multi-stage build
+    │
+    ├── 🛠️  scripts/
+    │   ├── subscribe-vm.sh             Onboard a target (run on pamvm)
+    │   └── target-setup.sh             Called by subscribe-vm.sh on the target
+    │
+    ├── 🐳 docker-compose.yml           Broker + DB + Frontend
+    ├── 📘 KEYCLOAK-SETUP.md            Realm/client configuration guide
+    ├── 📘 DEPLOY-VM.md                 VM deployment walkthrough
+    └── 📖 README.md                    You are here
 ```
 
 ---
