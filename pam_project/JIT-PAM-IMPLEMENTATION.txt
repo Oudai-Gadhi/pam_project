@@ -1,0 +1,148 @@
+JIT PAM IMPLEMENTATION AND DEPLOYMENT GUIDE
+============================================
+
+Purpose
+-------
+The application now brokers short-lived SSH access:
+
+Developer -> PAM request -> approval -> Vault certificate -> Guacamole -> RHEL.
+
+Critical source-IP correction
+-----------------------------
+With Guacamole, the TCP client which reaches RHEL is guacd, not the developer
+browser. A certificate source-address therefore cannot contain the developer
+IP. RHEL would reject the session. The PAM app records the browser IP for
+auditing. If source-address is later enabled, use only the guacd egress CIDR.
+
+Implemented application behavior
+--------------------------------
+* Keycloak groups remain enforced: pam_users request and approvers decide.
+* Requesters enter a target IP address. Targets and permitted Linux accounts
+  are allow-listed in PAM_TARGETS_JSON, so users cannot route Guacamole to an
+  unregistered IP address.
+* Browser IP is saved in the request audit record.
+* Approval sets a fixed access expiry time.
+* The requester receives one Connect action before expiry.
+* On Connect, the backend generates an in-memory RSA-3072 key, sends only its
+  public key to Vault, then receives a short-lived signed certificate. The RSA
+  user key is required for Guacamole/libssh2 certificate compatibility; Vault's
+  signing CA may remain Ed25519.
+* Private key and certificate are never stored in Postgres.
+* Backend makes a one-connection Guacamole auth-json payload, passes the full
+  Vault OpenSSH certificate line in Guacamole's SSH public-key field,
+  HMAC-SHA256-signs and AES-128-CBC-encrypts it, then redirects the browser.
+
+Files added/changed
+-------------------
+backend/app/services/vault.py       Ephemeral key and Vault signing
+backend/app/services/guacamole.py   Guacamole auth-json handoff
+backend/app/routes/requests.py      Validation and POST .../connect endpoint
+backend/app/models.py               Audit/expiry/session fields
+backend/app/config.py               Integration settings
+frontend/src/pages/UserDashboard.jsx  Connect button
+docker-compose.yml                  Backend-only integration variables
+
+STEP 1: Create a minimal Vault role
+-----------------------------------
+On pamvm, in guac-vault-stack, create dev-role. Replace oudai if necessary:
+
+docker compose exec -T -e VAULT_ADDR=http://127.0.0.1:8200 -e VAULT_TOKEN=root vault vault write ssh-client-signer/roles/dev-role key_type=ca allow_user_certificates=true allowed_users=oudai ttl=30m max_ttl=1h default_extensions='{"permit-pty":""}'
+
+Do not put key_id, extensions, or source-address in the first signing test.
+Vault rejects caller options that its role does not authorize; this is expected.
+
+STEP 2: Export the CA public key
+--------------------------------
+On pamvm, in guac-vault-stack:
+
+docker compose exec -T -e VAULT_ADDR=http://127.0.0.1:8200 -e VAULT_TOKEN=root vault vault read -field=public_key ssh-client-signer/config/ca > vault_ca.pub
+
+Copy vault_ca.pub to the RHEL target as /tmp/vault_ca.pub.
+
+STEP 3: Configure RHEL to trust the CA
+---------------------------------------
+Keep an existing admin SSH session open. On RHEL as root:
+
+install -o root -g root -m 0644 /tmp/vault_ca.pub /etc/ssh/trusted-user-ca-keys.pem
+install -d -o root -g root -m 0755 /etc/ssh/auth_principals
+printf '%s\n' oudai > /etc/ssh/auth_principals/oudai
+chown root:root /etc/ssh/auth_principals/oudai
+chmod 0644 /etc/ssh/auth_principals/oudai
+
+Create /etc/ssh/sshd_config.d/90-vault-ca.conf with:
+
+PubkeyAuthentication yes
+TrustedUserCAKeys /etc/ssh/trusted-user-ca-keys.pem
+AuthorizedPrincipalsFile /etc/ssh/auth_principals/%u
+LogLevel VERBOSE
+
+Then run:
+
+restorecon -Rv /etc/ssh
+sshd -t && systemctl reload sshd
+
+Keep password authentication until certificate login has been proven.
+
+STEP 4: Enable Guacamole JSON auth
+----------------------------------
+Generate one secret on pamvm:
+
+openssl rand -hex 16
+
+In the guacamole service of the separate guac-vault-stack Compose file set:
+
+JSON_ENABLED: "true"
+JSON_SECRET_KEY: "<generated 32 hexadecimal characters>"
+
+Pin guacamole and guacd to the same version and recreate the Guacamole service.
+The same secret is GUACAMOLE_JSON_SECRET in the PAM app .env.
+
+STEP 5: Configure this PAM app .env
+-----------------------------------
+Add these values, replacing every placeholder:
+
+VAULT_ADDR=http://host.docker.internal:8200
+VAULT_TOKEN=<dedicated-vault-token>
+VAULT_SSH_MOUNT=ssh-client-signer
+VAULT_SSH_ROLE=dev-role
+VAULT_VERIFY_TLS=false
+GUACAMOLE_PUBLIC_URL=http://<pamvm-ip>:8081/guacamole
+GUACAMOLE_JSON_SECRET=<same 32 hexadecimal characters>
+PAM_TARGETS_JSON={"<target-ip>":{"host":"<target-ip>","port":22,"users":["oudai"]}}
+
+For the current lab, host.docker.internal lets the backend container contact
+Vault on the VM. Production must use Vault HTTPS and a dedicated least-privilege
+Vault identity, never the root token.
+
+STEP 6: Start and test
+----------------------
+From this project directory:
+
+docker compose up --build -d
+docker compose logs -f backend
+
+To add an Ubuntu target from pamvm, run:
+
+chmod +x scripts/add-ubuntu-target.sh
+./scripts/add-ubuntu-target.sh <ubuntu-ip> <ubuntu-admin-user> <target-linux-user>
+
+The script copies the CA key, configures sshd certificate trust, registers the
+target IP in PAM_TARGETS_JSON, and restarts only the backend.
+
+Test in this order:
+1. Prove direct Vault-certificate login to RHEL before testing Guacamole.
+2. Sign in as a pam_users member and request the registered target IP / oudai.
+3. Sign in as another approver and approve it.
+4. Return as requester and click Connect.
+5. Inspect RHEL: journalctl -fu sshd.
+
+Current lab limitations / next hardening
+----------------------------------------
+* Vault dev mode, HTTP and root token are not production-safe.
+* The encrypted Guacamole URL is time-limited and issued once, but must travel
+  only over HTTPS and should be protected from referrer leakage.
+* ACTIVE means the handoff was issued, not that a terminal is still connected.
+  Add Guacamole session history integration for session-close auditing.
+* Add host key verification, recording, firewall restrictions, Alembic database
+  migrations, TLS, Vault AppRole/OIDC, and a trusted reverse proxy before use
+  outside a lab.
