@@ -11,7 +11,7 @@ SOURCE_ADDRESS_CIDR=""
 # ======================
 
 VAULT_TOKEN="${VAULT_TOKEN:-root}"  # Lab only. Do not use root in production.
-VAULT_ADDR="http://127.0.0.1:8200"
+VAULT_ADDR="http://127.0.0.1:8210"
 VAULT_MOUNT="ssh-client-signer"
 VAULT_ROLE="dev-role"
 WORKDIR="$HOME/pam-platform/guac-vault-stack/pam-jit-test"
