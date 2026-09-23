@@ -3,15 +3,15 @@ services:
     image: postgres:16-alpine
     container_name: pam-postgres
     environment:
-      POSTGRES_DB: keycloak
-      POSTGRES_USER: keycloak
-      POSTGRES_PASSWORD: keycloak
+      POSTGRES_DB: ${KC_DB_NAME:?Set KC_DB_NAME in .env}
+      POSTGRES_USER: ${KC_DB_USER:?Set KC_DB_USER in .env}
+      POSTGRES_PASSWORD: ${KC_DB_PASSWORD:?Set KC_DB_PASSWORD in .env}
     volumes:
-      - keycloak_db_data:/var/lib/postgresql/data   # ← THE MAGIC LINE
+      - keycloak_db_data:/var/lib/postgresql/data
     networks:
       - pam-net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U keycloak"]
+      test: ["CMD-SHELL", "pg_isready -U ${KC_DB_USER:?} -d ${KC_DB_NAME:?}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -22,14 +22,14 @@ services:
     command: start-dev
     environment:
       # Admin bootstrap
-      KC_BOOTSTRAP_ADMIN_USERNAME: admin
-      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_ADMIN_USER:?Set KC_ADMIN_USER in .env}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD:?Set KC_ADMIN_PASSWORD in .env}
 
       # === THIS IS WHAT MAKES DATA PERSIST ===
       KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
-      KC_DB_USERNAME: keycloak
-      KC_DB_PASSWORD: keycloak
+      KC_DB_URL: jdbc:postgresql://postgres:5432/${KC_DB_NAME:?Set KC_DB_NAME in .env}
+      KC_DB_USERNAME: ${KC_DB_USER:?Set KC_DB_USER in .env}
+      KC_DB_PASSWORD: ${KC_DB_PASSWORD:?Set KC_DB_PASSWORD in .env}
       # ======================================
 
       KC_HTTP_ENABLED: "true"
@@ -44,7 +44,7 @@ services:
       - pam-net
 
 volumes:
-  keycloak_db_data:      # ← NAMED VOLUME — persists across down/up
+  keycloak_db_data:
 
 networks:
   pam-net:
