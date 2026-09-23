@@ -1,8 +1,2 @@
-.env
-node_modules/
-dist/
-__pycache__/
-*.pyc
-.venv/
-*.egg-info/
-.DS_Store
+guac-vault-stack/vault-init.txt
+guac-vault-stack/pam-jit-test/pam-test-key

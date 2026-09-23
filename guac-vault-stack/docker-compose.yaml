@@ -1,0 +1,55 @@
+services:
+  vault:
+    image: hashicorp/vault:1.17
+    container_name: vault
+    network_mode: host
+    cap_add:
+      - IPC_LOCK
+    restart: unless-stopped
+    command: server                          # ← ADD THIS LINE
+    environment:
+      VAULT_LOCAL_CONFIG: |
+        storage "file" { path = "/vault/data" }
+        listener "tcp" { address = "0.0.0.0:8210" tls_disable = true }
+        disable_mlock = true
+        api_addr = "http://0.0.0.0:8210"
+        ui = true
+    volumes:
+      - vault_data:/vault/data
+
+  guacd:
+    image: guacamole/guacd:latest
+    container_name: guacd
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: guac-postgres
+    environment:
+      POSTGRES_DB: guacamole_db
+      POSTGRES_USER: guacamole_user
+      POSTGRES_PASSWORD: guac_password
+    volumes:
+      - ./guac/init:/docker-entrypoint-initdb.d
+    restart: unless-stopped
+
+  guacamole:
+    image: guacamole/guacamole:latest
+    container_name: guacamole
+    ports:
+      - "8081:8080"
+    environment:
+      GUACD_HOSTNAME: guacd
+      POSTGRESQL_HOSTNAME: postgres
+      POSTGRESQL_DATABASE: guacamole_db
+      POSTGRESQL_USER: guacamole_user
+      POSTGRESQL_PASSWORD: guac_password
+      JSON_ENABLED: "true"
+      JSON_SECRET_KEY: "1c21b99cf55095149376400a835b085e"
+    depends_on:
+      - guacd
+      - postgres
+    restart: unless-stopped
+
+volumes:
+  vault_data:
