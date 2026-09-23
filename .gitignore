@@ -1,2 +1,4 @@
 guac-vault-stack/vault-init.txt
 guac-vault-stack/pam-jit-test/pam-test-key
+.env
+guac-vault-stack/.env

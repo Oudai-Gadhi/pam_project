@@ -6,7 +6,7 @@ services:
     cap_add:
       - IPC_LOCK
     restart: unless-stopped
-    command: server                          # ← ADD THIS LINE
+    command: server
     environment:
       VAULT_LOCAL_CONFIG: |
         storage "file" { path = "/vault/data" }
@@ -26,9 +26,9 @@ services:
     image: postgres:15-alpine
     container_name: guac-postgres
     environment:
-      POSTGRES_DB: guacamole_db
-      POSTGRES_USER: guacamole_user
-      POSTGRES_PASSWORD: guac_password
+      POSTGRES_DB: ${GUAC_DB_NAME:?Set GUAC_DB_NAME in .env}
+      POSTGRES_USER: ${GUAC_DB_USER:?Set GUAC_DB_USER in .env}
+      POSTGRES_PASSWORD: ${GUAC_DB_PASSWORD:?Set GUAC_DB_PASSWORD in .env}
     volumes:
       - ./guac/init:/docker-entrypoint-initdb.d
     restart: unless-stopped
@@ -41,11 +41,11 @@ services:
     environment:
       GUACD_HOSTNAME: guacd
       POSTGRESQL_HOSTNAME: postgres
-      POSTGRESQL_DATABASE: guacamole_db
-      POSTGRESQL_USER: guacamole_user
-      POSTGRESQL_PASSWORD: guac_password
+      POSTGRESQL_DATABASE: ${GUAC_DB_NAME:?Set GUAC_DB_NAME in .env}
+      POSTGRESQL_USER: ${GUAC_DB_USER:?Set GUAC_DB_USER in .env}
+      POSTGRESQL_PASSWORD: ${GUAC_DB_PASSWORD:?Set GUAC_DB_PASSWORD in .env}
       JSON_ENABLED: "true"
-      JSON_SECRET_KEY: "1c21b99cf55095149376400a835b085e"
+      JSON_SECRET_KEY: ${GUAC_JSON_SECRET:?Set GUAC_JSON_SECRET in .env}
     depends_on:
       - guacd
       - postgres
