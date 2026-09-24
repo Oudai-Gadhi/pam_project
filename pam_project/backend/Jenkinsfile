@@ -76,7 +76,6 @@ pipeline {
         }
 
         stage('Push') {
-            when { anyOf { branch 'main'; branch 'master' } }
             steps {
                 sh '''
                     echo "$REGISTRY_PSW" | docker login -u "$REGISTRY_USR" --password-stdin
