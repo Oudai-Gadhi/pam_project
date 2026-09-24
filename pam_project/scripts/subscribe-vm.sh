@@ -58,11 +58,17 @@ current="$(sed -n 's/^PAM_TARGETS_JSON=//p' "$ENV_FILE" | tail -n 1)"
 users_json="$(printf '%s' "$CERT_USERS" \
   | jq -Rc 'split(",") | map(gsub("^\\s+|\\s+$";"")) | map(select(length>0))')"
 
+# Merge new users into the existing list instead of replacing it.
+# (((.[$ip].users // []) + $users) | unique) — appends and deduplicates.
 updated="$(printf '%s' "$current" | jq -c \
   --arg       ip    "$TARGET_IP" \
   --argjson   port  "$TARGET_PORT" \
   --argjson   users "$users_json" \
-  '. + {($ip): {host: $ip, port: $port, users: $users}}')"
+  '. + {($ip): {
+      host: $ip,
+      port: $port,
+      users: (((.[$ip].users // []) + $users) | unique)
+  }}')"
 
 tmp="$(mktemp)"
 trap 'rm -f "$tmp"' EXIT
