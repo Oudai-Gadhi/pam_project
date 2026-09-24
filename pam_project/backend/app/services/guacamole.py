@@ -44,6 +44,10 @@ def build_redirect_url(
                     "username": target_username,
                     "private-key": credential.private_key,
                     "public-key": credential.certificate,
+                    # guacd has no persistent known_hosts and its container
+                    # is recreated on every stack restart. Without this, the
+                    # handshake fails before authentication is even attempted.
+                    "host-key-check": "false",
                 },
             }
         },
