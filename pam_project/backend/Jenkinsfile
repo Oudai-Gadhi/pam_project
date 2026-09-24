@@ -1,0 +1,105 @@
+pipeline {
+    agent any
+
+    environment {
+        // Update this to your Docker Hub username / registry
+        IMAGE_NAME = "oudaii/pam-backend"
+        IMAGE_TAG  = "${env.BUILD_NUMBER}-${env.GIT_COMMIT.take(7)}"
+        REGISTRY   = credentials('dockerhub-creds')
+    }
+
+    options {
+        timeout(time: 30, unit: 'MINUTES')
+        timestamps()
+        ansiColor('xterm')
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+                sh 'git log -1 --oneline'
+            }
+        }
+
+        stage('Ruff (blockers)') {
+            steps {
+                sh '''
+                    echo "▶ Ruff — blocker rules only (F, E9)"
+                    docker run --rm \
+                      -v "$PWD:/app" -w /app \
+                      python:3.11-slim \
+                      sh -c "pip install -q ruff==0.6.9 && ruff check . --select F,E9"
+                '''
+            }
+        }
+
+        stage('Ruff (warnings)') {
+            steps {
+                sh '''
+                    echo "▶ Ruff — full ruleset (informational)"
+                    docker run --rm \
+                      -v "$PWD:/app" -w /app \
+                      python:3.11-slim \
+                      sh -c "pip install -q ruff==0.6.9 && ruff check . --output-format=github || true"
+                '''
+            }
+        }
+
+        stage('Build image') {
+            steps {
+                sh '''
+                    echo "▶ Building ${IMAGE_NAME}:${IMAGE_TAG}"
+                    docker build \
+                      -t "${IMAGE_NAME}:${IMAGE_TAG}" \
+                      -t "${IMAGE_NAME}:latest" \
+                      .
+                '''
+            }
+        }
+
+        stage('Trivy scan') {
+            steps {
+                sh '''
+                    echo "▶ Trivy — CRITICAL only, ignore unfixed"
+                    docker run --rm \
+                      -v /var/run/docker.sock:/var/run/docker.sock \
+                      aquasec/trivy:latest image \
+                      --severity CRITICAL \
+                      --ignore-unfixed \
+                      --exit-code 1 \
+                      "${IMAGE_NAME}:${IMAGE_TAG}"
+                '''
+            }
+        }
+
+        stage('Push') {
+            when { anyOf { branch 'main'; branch 'master' } }
+            steps {
+                sh '''
+                    echo "▶ Pushing to registry"
+                    echo "$REGISTRY_PSW" | docker login -u "$REGISTRY_USR" --password-stdin
+                    docker push "${IMAGE_NAME}:${IMAGE_TAG}"
+                    docker push "${IMAGE_NAME}:latest"
+                    docker logout
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "✅ Deployed: ${IMAGE_NAME}:${IMAGE_TAG}"
+            echo "   Watchtower on pamvm will pull within 5 minutes."
+        }
+        failure {
+            echo "❌ Failed at stage: ${env.STAGE_NAME}"
+        }
+        always {
+            sh '''
+                docker rmi "${IMAGE_NAME}:${IMAGE_TAG}" "${IMAGE_NAME}:latest" 2>/dev/null || true
+                docker logout 2>/dev/null || true
+            '''
+        }
+    }
+}
